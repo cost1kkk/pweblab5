@@ -116,3 +116,43 @@ def clean_whitespace(text):
     text = re.sub(r'\t+', '\t', text)
     text = re.sub(r'\n{2,}', '\n\n', text)
     return re.sub(r'\r{2,}', '\r\r', text)
+# Search for terms on Bing and print top 10 results.
+def search_with_bing(terms):
+    cached_data = load_cached_data()
+    search_identifier = "search:" + terms.lower()  # Ensure case-insensitive matching
+
+    if search_identifier in cached_data and not cache_expired(cached_data[search_identifier][0], expiry_seconds=300):
+        results = cached_data[search_identifier][1]
+    else:
+        query = quote_plus(terms)
+        content = execute_web_request("www.bing.com", 443,
+                                      f"GET /search?q={query} HTTP/1.1\r\nHost: www.bing.com\r\nConnection: close\r\n\r\n",
+                                      True)
+        if content:
+            soup = BeautifulSoup(content, "html.parser")
+            results_elements = soup.find(id="b_results").find_all("li", class_="b_algo")
+            if not results_elements:
+                print(f"No results found for {terms}.")
+                return
+            results = [{"title": result.find("h2").get_text(), "link": result.find("a")["href"]}
+                       for result in results_elements[:10]]
+            update_cache(search_identifier, results, cached_data)
+        else:
+            print("Failed to retrieve or parse search results.")
+            return
+
+    for index, result in enumerate(results, start=1):
+        print(f"{index}. {result['title']}: {result['link']}")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Web scraper utility.")
+    parser.add_argument('-u', '--url', help="Fetches and displays content from the specified URL.")
+    parser.add_argument('-s', '--search', help="Searches Bing with the specified terms and displays top results.")
+    args = parser.parse_args()
+
+    if args.url:
+        fetch_webpage_content(args.url)
+    elif args.search:
+        search_with_bing(args.search.lower())  # Use lowercase to ensure case-insensitive cache matching
+    else:
+        print("No action specified. Use -u to fetch URL content or -s to search.")
